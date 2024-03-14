@@ -91,35 +91,122 @@ class GMNN(nn.Module):
     
 
 
-class GSM(nn.Module):
-    """
-    Gaussian Sampling Model (GSM) class. This class is a subclass of the PyTorch nn.Module class.
+class Encoder(nn.Module):
+    def __init__(self, input_dim, latent_dim):
+        super(Encoder, self).__init__()
+        self.latent_dim = latent_dim
+        self.linear = nn.Linear(input_dim, latent_dim*2)  # *2 for mean and log variance
 
-    The idea is to sample from a single Gaussian distribution centered on the input data. Hopefully, this will
-    help to create very complex distributions since the simple gaussian distribution is going through a complex
-    non-linear transformation.
-    """
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def forward(self, x):
+        x = self.linear(x)
+        mu = x[:, :self.latent_dim]  # Mean
+        log_var = x[:, self.latent_dim:]  # Log variance for numerical stability
+        return mu, log_var
 
-        self.transform = nn.Sequential(
-            nn.Linear(1, 10),
-            nn.ReLU(),
-            nn.Linear(10, 10),
-            nn.ReLU(),
-            nn.Linear(10, 1)
+class Decoder(nn.Module):
+    def __init__(self, latent_dim, output_dim):
+        super(Decoder, self).__init__()
+        self.linear = nn.Linear(latent_dim, output_dim)
+
+    def forward(self, z):
+        return torch.sigmoid(self.linear(z))  # Use sigmoid to output values between 0 and 1
+
+class VAE(nn.Module):
+    def __init__(self, input_dim, latent_dim):
+        super(VAE, self).__init__()
+        self.encoder = Encoder(input_dim, latent_dim)
+        self.decoder = Decoder(latent_dim, 1)
+
+    def reparameterize(self, mu, log_var):
+        std = torch.exp(0.5*log_var)
+        eps = torch.randn_like(std)
+        return mu + eps*std
+
+    def forward(self, x):
+        mu, log_var = self.encoder(x)
+        z = self.reparameterize(mu, log_var)
+        return self.decoder(z)
+
+
+
+class GaussianTransform(nn.Module):
+    """
+    A family of Gaussian are parametrized by the input tensor and then transformed by a neural network.
+
+    Hopefully, the complexe transformation will enable the model to capture complexe distribution.
+    """
+    def __init__(
+            self, n_input: int,
+            encoder_n_hidden: list,
+            n_latent: int,
+            decoder_n_hidden: list,
+            n_output: int = 1
+        ):
+        """
+        Initialize the GaussianTransform.
+
+        Arguments:
+         - n_input: the number of input features.
+         - encoder_layers: the list of number of neurones in the layers for the encoder.
+         - decoder_layers: the list of number of neurones in the layers for the decoder.
+         - n_output: the number of output features.
+        """
+        super().__init__()
+        self.n_latent = n_latent
+
+        self.mu_encoder = nn.Sequential(
+            nn.Linear(n_input, encoder_n_hidden[0]),
+            nn.ReLU()
         )
+        self.log_var_encoder = nn.Sequential(
+            nn.Linear(n_input, encoder_n_hidden[0]),
+            nn.ReLU()
+        )
+        for i in encoder_n_hidden[1:]:
+            self.mu_encoder.add_module('hidden', nn.Linear(encoder_n_hidden[i-1], encoder_n_hidden[i]))
+            self.mu_encoder.add_module('hidden_relu', nn.ReLU())
+            self.log_var_encoder.add_module('hidden', nn.Linear(encoder_n_hidden[i-1], encoder_n_hidden[i]))
+            self.log_var_encoder.add_module('hidden_relu', nn.ReLU())
 
+        self.mu_encoder.add_module('output', nn.Linear(encoder_n_hidden[-1], n_latent))
+        self.log_var_encoder.add_module('output', nn.Linear(encoder_n_hidden[-1], n_latent))
+
+        self.decoder = nn.Sequential(
+            nn.Linear(n_latent, decoder_n_hidden[0]),
+            nn.ReLU()
+        )
+        for i in decoder_n_hidden[1:]:
+            self.decoder.add_module('hidden', nn.Linear(decoder_n_hidden[i-1], decoder_n_hidden[i]))
+            self.decoder.add_module('hidden_relu', nn.ReLU())
+        
+        self.decoder.add_module('output', nn.Linear(decoder_n_hidden[-1], n_output))
+
+    def reparametrize(self, mu, log_var):
+        """
+        Reparametrize the Gaussian distribution.
+
+        Arguments:
+         - mu: the mean of the Gaussian distribution.
+         - log_var: the log variance of the Gaussian distribution.
+
+        Returns:
+         - A sample from the Gaussian distribution.
+        """
+        std = torch.exp(0.5 * log_var)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+    
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass of the GSM.
+        Forward pass of the GaussianTransform.
 
         Arguments:
          - x: the input tensor.
 
         Returns:
-         - The sample from the GSM.
+         - The output tensor.
         """
-        
-
-    
+        mu = self.mu_encoder(x)
+        log_var = self.log_var_encoder(x)
+        z = self.reparametrize(mu, log_var)
+        return self.decoder(z)

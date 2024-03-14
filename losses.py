@@ -93,3 +93,33 @@ class GaussianMixtureLoss(nn.Module):
         print('log_prior:', self._nll_gaussian(y_pred, self.prior_mu, torch.log(self.prior_sigma)).mean())
         print('log_p_q:', self._nll_gm(y_pred, mu, log_var, weights).mean())
         print('elbo:', self.forward(y_pred, y, mu, log_var, weights).mean())
+
+
+
+def KL_loss(y, y_pred):
+    """
+    Compute the Kullback-Leibler divergence for PDFs.
+
+    Arguments:
+        - y: the actual output.
+        - y_pred: the predicted output.
+
+    Returns:
+        - The computed Kullback-Leibler divergence.
+    """
+    return torch.mean(y * (torch.log(y + 1e-8) - torch.log(y_pred + 1e-8)))
+
+
+def JS_loss(y, y_pred):
+    """
+    Compute the Jensen-Shannon divergence for PDFs.
+
+    Arguments:
+        - y: the actual output.
+        - y_pred: the predicted output.
+
+    Returns:
+        - The computed Jensen-Shannon divergence.
+    """
+    m = 0.5 * (y + y_pred)
+    return 0.5 * KL_loss(y, m) + 0.5 * KL_loss(y_pred, m)

@@ -36,13 +36,13 @@ class GaussianDataset(Dataset):
         """
         self.n = n
         self.n_samples = n_samples
-        self.X = torch.rand(n, device=self.device)
-        self.X = self.X.repeat(n_samples).reshape(-1, 1).to(self.device)
+        self.X = torch.rand(n)
+        self.X = self.X.repeat(n_samples).reshape(-1, 1)
         
         self.X_gm_transform(self.X, n, n_samples)
 
         if self.poly:
-            self.X = self.X_poly_transform(self.X, n, n_samples)
+            self.X = self.X_poly_transform(self.X, n, n_samples).to(self.device)
 
     def X_gm_transform(self, X: torch.tensor, n: int, n_samples: int) -> torch.tensor:
         """
@@ -66,8 +66,8 @@ class GaussianDataset(Dataset):
 
         # sample from the Gaussian Mixture
         comp = torch.multinomial(self.weights, n_samples * n, replacement=True)
-        selected_mu = mus[torch.arange(n_samples * n, device=self.device), comp]
-        selected_sigma = sigmas[torch.arange(n_samples * n, device=self.device), comp]
+        selected_mu = mus[torch.arange(n_samples * n), comp]
+        selected_sigma = sigmas[torch.arange(n_samples * n), comp]
 
         self.y = torch.normal(selected_mu, selected_sigma).reshape(-1, 1).to(self.device)
 
